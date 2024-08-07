@@ -3,13 +3,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <pthread.h>
+#include <arpa/inet.h>
 
 extern int total_guesses;
 extern int total_wins;
 extern int total_losses;
 extern char ** words;
 
-void load_words(const char *filename, int num_words) {
+// function to fill char ** words from given file
+void parse_words(const char *filename, int num_words) {
     int fd = open(filename, O_RDONLY);
     if (fd == -1) {
         perror("ERROR: Unable to open dictionary file");
@@ -44,11 +47,19 @@ void load_words(const char *filename, int num_words) {
         }
     }
 
+    *(words + num_words) = NULL; // last entry must be null
     free(buffer);
     close(fd);
 }
 
-
+// handles inputs from client and updates data
+void *handle_client(void *arg){
+    int num_guesses = 0;
+    char *buffer = (char*)calloc(6, sizeof(char));
+    while (num_guesses < 5){
+        num_guesses++;
+    }
+}
 
 int wordle_server(int argc, char **argv){
     if (argc != 5){
@@ -63,10 +74,51 @@ int wordle_server(int argc, char **argv){
     int num_words = atoi(*(argv + 4));
 
     srand(seed);
-    load_words(filename, num_words);
+    parse_words(filename, num_words);
     printf("MAIN: opened %s (%d words)\n", filename, num_words);
     printf("MAIN: seeded pesudo-random number generator with %d\n", seed);
-    printf("MAIN: Wordle sever listening on port {%d}\n", PORT);
 
+    // create tcp socket and setup conection to client
+    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == -1 ) { 
+        perror( "ERROR: socket() failed"); 
+        return EXIT_FAILURE; 
+    }
+
+    // setup address structure
+    struct sockaddr_in tcp_server;
+    tcp_server.sin_family = AF_INET;
+    tcp_server.sin_port = htons(PORT);
+    tcp_server.sin_addr.s_addr = INADDR_ANY;
+
+    // bind the socket
+    if(bind(server_socket, (struct sockaddr *)& tcp_server, sizeof(tcp_server)) == -1){
+        perror("ERROR: bind() failed");
+        close(server_socket);
+        return EXIT_FAILURE;
+    }
+
+    // listen for connections, second parameter for max queued at once
+    // not sure what the number should be???
+    if(listen(server_socket, 10) == -1){
+        perror("ERROR: listen() failed");
+        close(server_socket);
+        return EXIT_FAILURE;
+    }
+
+    printf("MAIN: Wordle sever listening on port {%d}\n", PORT);
+    // start accepting clients
+    while(1) {
+        int client_socket = accept(server_socket, NULL, NULL);
+        if (client_socket == -1){
+            perror("ERROR: failed to accept");
+            continue;
+        }
+
+        printf("MAIN: rcvd incoming connection request\n");
+        
+    }
+
+    close(server_socket);
     return EXIT_SUCCESS;
 }
